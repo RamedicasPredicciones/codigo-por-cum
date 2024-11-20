@@ -33,6 +33,7 @@ def find_best_match(client_cum, ramedicas_df):
         exact_match = ramedicas_df[ramedicas_df['processed_cum'] == client_cum_processed].iloc[0]
         return {
             'cum_cliente': client_cum,
+            'cum_ramedicas': exact_match['cum'],  # CUM de Ramedicas
             'codart_ramedicas': exact_match['codart'],  # Código del producto (codart)
             'nomart_ramedicas': exact_match['nomart'],  # Nombre del producto (nomart)
             'score': 100  # Puntaje 100 para coincidencia exacta
@@ -57,6 +58,7 @@ def find_best_match(client_cum, ramedicas_df):
             highest_score = score
             best_match = {
                 'cum_cliente': client_cum,
+                'cum_ramedicas': candidate_row['cum'],  # CUM de Ramedicas
                 'codart_ramedicas': candidate_row['codart'],  # Código del producto
                 'nomart_ramedicas': candidate_row['nomart'],  # Nombre del producto
                 'score': score
@@ -66,6 +68,7 @@ def find_best_match(client_cum, ramedicas_df):
     if not best_match and matches:
         best_match = {
             'cum_cliente': client_cum,
+            'cum_ramedicas': ramedicas_df.iloc[matches[0][2]]['cum'],  # CUM de Ramedicas
             'codart_ramedicas': ramedicas_df.iloc[matches[0][2]]['codart'],  # Código del producto
             'nomart_ramedicas': ramedicas_df.iloc[matches[0][2]]['nomart'],  # Nombre del producto
             'score': matches[0][1]  # Puntuación de la mejor coincidencia
@@ -105,6 +108,7 @@ if uploaded_file:
             else:
                 results.append({
                     'cum_cliente': client_cum,
+                    'cum_ramedicas': None,
                     'codart_ramedicas': None,
                     'nomart_ramedicas': None,
                     'score': 0
