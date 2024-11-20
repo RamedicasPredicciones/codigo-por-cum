@@ -1,77 +1,129 @@
 import streamlit as st
 import pandas as pd
+from io import BytesIO
+from rapidfuzz import fuzz, process
 
-# Cargar archivos privados de manera segura
-@st.cache_data
-def load_private_files():
-    maestro_moleculas_df = pd.read_excel('Maestro_Moleculas.xlsx')
-    inventario_api_df = pd.read_excel('Inventario.xlsx')
-    return maestro_moleculas_df, inventario_api_df
+# Cargar datos de Ramedicas desde Google Drive
+@st.cache_data  # Cachear los datos para evitar recargarlos en cada ejecución
+def load_ramedicas_data():
+    # URL del archivo Excel en Google Drive
+    ramedicas_url = (
+        "https://docs.google.com/spreadsheets/d/1Y9SgliayP_J5Vi2SdtZmGxKWwf1iY7ma/export?format=xlsx&sheet=Hoja1"
+    )
+    # Leer el archivo Excel desde la URL
+    ramedicas_df = pd.read_excel(ramedicas_url, sheet_name="Hoja1")
+    # Retornar solo las columnas relevantes
+    return ramedicas_df[['cum', 'codart', 'nomart']]  # Incluir 'cum', 'codart' y 'nomart'
 
-# Función para procesar el archivo de faltantes y generar el resultado
-def procesar_faltantes(faltantes_df, maestro_moleculas_df, inventario_api_df):
-    faltantes_df.columns = faltantes_df.columns.str.lower().str.strip()
-    maestro_moleculas_df.columns = maestro_moleculas_df.columns.str.lower().str.strip()
-    inventario_api_df.columns = inventario_api_df.columns.str.lower().str.strip()
+# Preprocesar CUM para que siempre esté en minúsculas
+def preprocess_cum(cum):
+    return cum.strip().lower()  # Limpiar y poner el CUM en minúsculas
 
-    cur_faltantes = faltantes_df['cur'].unique()
-    codart_faltantes = faltantes_df['codart'].unique()
+# Buscar la mejor coincidencia entre el CUM del cliente y los productos de Ramedicas
+def find_best_match(client_cum, ramedicas_df):
+    # Preprocesar el CUM del cliente
+    client_cum_processed = preprocess_cum(client_cum)
+    # Aplicar el preprocesamiento a todos los productos de Ramedicas
+    ramedicas_df['processed_cum'] = ramedicas_df['cum'].apply(preprocess_cum)
 
-    alternativas_df = maestro_moleculas_df[maestro_moleculas_df['cur'].isin(cur_faltantes)]
+    # Buscar coincidencia exacta primero
+    if client_cum_processed in ramedicas_df['processed_cum'].values:
+        exact_match = ramedicas_df[ramedicas_df['processed_cum'] == client_cum_processed].iloc[0]
+        return {
+            'cum_cliente': client_cum,
+            'codart_ramedicas': exact_match['codart'],  # Código del producto (codart)
+            'nomart_ramedicas': exact_match['nomart'],  # Nombre del producto (nomart)
+            'score': 100  # Puntaje 100 para coincidencia exacta
+        }
 
-    alternativas_inventario_df = pd.merge(
-        alternativas_df,
-        inventario_api_df,
-        on='cur',
-        how='inner',
-        suffixes=('_alternativas', '_inventario')
+    # Buscar las mejores coincidencias utilizando RapidFuzz (algoritmo de fuzzy matching)
+    matches = process.extract(
+        client_cum_processed,
+        ramedicas_df['processed_cum'],
+        scorer=fuzz.token_set_ratio,  # Usar el método de puntuación token_set_ratio
+        limit=10  # Limitar el número de coincidencias a 10
     )
 
-    alternativas_disponibles_df = alternativas_inventario_df[
-        (alternativas_inventario_df['cantidad'] > 0) &
-        (alternativas_inventario_df['codart_alternativas'].isin(codart_faltantes))
-    ]
+    best_match = None
+    highest_score = 0
 
-    columnas_deseadas = [
-        'codart_alternativas', 'cur', 'opcion_inventario', 'codart_inventario', 'cantidad', 'bodega'
-    ]
-    columnas_presentes = [col for col in columnas_deseadas if col in alternativas_disponibles_df.columns]
-    alternativas_disponibles_df = alternativas_disponibles_df[columnas_presentes]
+    # Iterar sobre las coincidencias encontradas
+    for match, score, idx in matches:
+        candidate_row = ramedicas_df.iloc[idx]  # Obtener la fila candidata
 
-    alternativas_disponibles_df.rename(columns={
-        'codart_alternativas': 'codart_faltante',
-        'opcion_inventario': 'opcion_alternativa',
-        'codart_inventario': 'codart_alternativa'
-    }, inplace=True)
+        if score > highest_score:  # Si la puntuación es mejor que la anterior, se actualiza
+            highest_score = score
+            best_match = {
+                'cum_cliente': client_cum,
+                'codart_ramedicas': candidate_row['codart'],  # Código del producto
+                'nomart_ramedicas': candidate_row['nomart'],  # Nombre del producto
+                'score': score
+            }
 
-    resultado_final_df = pd.merge(
-        faltantes_df[['cur', 'codart']],
-        alternativas_disponibles_df,
-        left_on=['cur', 'codart'],
-        right_on=['cur', 'codart_faltante'],
-        how='inner'
-    )
+    # Si no hay coincidencias completas, se devuelve la mejor aproximación
+    if not best_match and matches:
+        best_match = {
+            'cum_cliente': client_cum,
+            'codart_ramedicas': ramedicas_df.iloc[matches[0][2]]['codart'],  # Código del producto
+            'nomart_ramedicas': ramedicas_df.iloc[matches[0][2]]['nomart'],  # Nombre del producto
+            'score': matches[0][1]  # Puntuación de la mejor coincidencia
+        }
 
-    return resultado_final_df
+    return best_match
 
-# Streamlit UI
-st.title('Generador de Alternativas de Faltantes')
+# Interfaz de Streamlit
+st.title("Homologador de Productos - Ramedicas")  # El título de la aplicación
 
-uploaded_file = st.file_uploader("Sube tu archivo de faltantes", type="xlsx")
+# Opción para actualizar la base de datos y limpiar el caché
+if st.button("Actualizar base de datos"):
+    st.cache_data.clear()  # Limpiar el caché para cargar los datos de nuevo
+
+# Espacio de entrada para subir archivo con los CUM de los clientes
+uploaded_file = st.file_uploader("Sube tu archivo con los CUM de los clientes", type="xlsx")
 
 if uploaded_file:
-    faltantes_df = pd.read_excel(uploaded_file)
-    maestro_moleculas_df, inventario_api_df = load_private_files()
+    # Leer el archivo subido con los CUM de los clientes
+    client_cums_df = pd.read_excel(uploaded_file)
+    
+    # Verificar si la columna 'cum' está presente en el archivo subido
+    if 'cum' not in client_cums_df.columns:
+        st.error("El archivo debe contener una columna llamada 'cum'.")
+    else:
+        # Cargar los datos de productos de Ramedicas
+        ramedicas_df = load_ramedicas_data()
+        
+        # Lista para almacenar los resultados de la homologación
+        results = []
+        
+        # Se crea la iteración sobre cada CUM de cliente para encontrar la mejor coincidencia
+        for client_cum in client_cums_df['cum']:
+            match = find_best_match(client_cum, ramedicas_df)
+            if match:
+                results.append(match)
+            else:
+                results.append({
+                    'cum_cliente': client_cum,
+                    'codart_ramedicas': None,
+                    'nomart_ramedicas': None,
+                    'score': 0
+                })
 
-    resultado_final_df = procesar_faltantes(faltantes_df, maestro_moleculas_df, inventario_api_df)
+        # Crear un DataFrame con los resultados
+        results_df = pd.DataFrame(results)
+        st.write("Resultados de homologación:")
+        st.dataframe(results_df)  # Mostrar los resultados en una tabla
 
-    st.write("Archivo procesado correctamente.")
-    st.dataframe(resultado_final_df)
+        # Función para convertir el DataFrame a un archivo Excel
+        def to_excel(df):
+            output = BytesIO()  # Usamos BytesIO para manejar el archivo en memoria
+            with pd.ExcelWriter(output, engine="openpyxl") as writer:
+                df.to_excel(writer, index=False, sheet_name="Homologación")  # Escribir el DataFrame al archivo
+            return output.getvalue()
 
-    # Botón para descargar el archivo generado
-    st.download_button(
-        label="Descargar archivo de alternativas",
-        data=resultado_final_df.to_excel(index=False, engine='openpyxl'),
-        file_name='alternativas_disponibles.xlsx',
-        mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-    )
+        # Botón para descargar los resultados como un archivo Excel
+        st.download_button(
+            label="Descargar archivo con resultados",
+            data=to_excel(results_df),
+            file_name="homologacion_productos.xlsx",  # Nombre del archivo de descarga
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",  # Tipo de archivo excel 
+        )
