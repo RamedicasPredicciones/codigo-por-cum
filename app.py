@@ -17,7 +17,9 @@ def load_ramedicas_data():
 
 # Preprocesar CUM para que siempre esté en minúsculas
 def preprocess_cum(cum):
-    return cum.strip().lower()  # Limpiar y poner el CUM en minúsculas
+    if isinstance(cum, str):  # Verificar que cum sea una cadena de texto
+        return cum.strip().lower()  # Limpiar y poner el CUM en minúsculas
+    return ""  # Si no es una cadena, devolver una cadena vacía
 
 # Buscar la mejor coincidencia entre el CUM del cliente y los productos de Ramedicas
 def find_best_match(client_cum, ramedicas_df):
