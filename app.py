@@ -1,38 +1,21 @@
 import streamlit as st
 import pandas as pd
 from io import BytesIO
-from googleapiclient.discovery import build
-from google.oauth2 import service_account
 from rapidfuzz import fuzz, process
 
-# Cargar datos desde Google Sheets (CUMs de clientes)
-def load_client_cums():
-    # URL del archivo de Google Sheets con los CUMs de los clientes
-    sheet_url = "https://docs.google.com/spreadsheets/d/1CP-mR-ZeuI2ga8R7_CCXB0aiV_vqsrpK/edit?usp=sharing&ouid=109532697276677589725&rtpof=true&sd=true"
-    sheet_id = sheet_url.split('/d/')[1].split('/')[0]  # Extraer el ID del sheet
-    range_name = 'Hoja1!A:A'  # Asumimos que los CUMs están en la columna A
-
-    # Autenticación con Google Sheets
-    creds = service_account.Credentials.from_service_account_file('path_to_your_service_account.json')
-    service = build('sheets', 'v4', credentials=creds)
-
-    # Leer datos de Google Sheets
-    sheet = service.spreadsheets()
-    result = sheet.values().get(spreadsheetId=sheet_id, range=range_name).execute()
-    values = result.get('values', [])
-
-    # Convertir los CUMs a un DataFrame
-    client_cums_df = pd.DataFrame(values, columns=["cum"])
-    return client_cums_df
-
-# Cargar datos de Ramedicas
+# Cargar datos de Ramedicas desde Google Drive
+@st.cache_data  # Cachear los datos para evitar recargarlos en cada ejecución
 def load_ramedicas_data():
-    # URL del archivo Excel de Ramedicas
-    ramedicas_url = "https://docs.google.com/spreadsheets/d/1Y9SgliayP_J5Vi2SdtZmGxKWwf1iY7ma/export?format=xlsx&sheet=Hoja1"
+    # URL del archivo Excel en Google Drive
+    ramedicas_url = (
+        "https://docs.google.com/spreadsheets/d/1Y9SgliayP_J5Vi2SdtZmGxKWwf1iY7ma/export?format=xlsx&sheet=Hoja1"
+    )
+    # Leer el archivo Excel desde la URL
     ramedicas_df = pd.read_excel(ramedicas_url, sheet_name="Hoja1")
-    return ramedicas_df[['cum', 'codart', 'nomart']]  # 'cum', 'codart' y 'nomart'
+    # Retornar solo las columnas relevantes
+    return ramedicas_df[['cum', 'codart', 'nomart']]  # Incluir 'cum', 'codart' y 'nomart'
 
-# Preprocesar CUM para asegurar que siempre esté en minúsculas
+# Preprocesar CUM para que siempre esté en minúsculas
 def preprocess_cum(cum):
     if isinstance(cum, str):  # Verificar que cum sea una cadena de texto
         return cum.strip().lower()  # Limpiar y poner el CUM en minúsculas
@@ -76,38 +59,48 @@ def find_best_match(client_cum, ramedicas_df):
             best_match = {
                 'cum_cliente': client_cum,
                 'cum_ramedicas': candidate_row['cum'],  # CUM de Ramedicas
-                'codart_ramedicas': candidate_row['codart'],  # Código del producto (codart)
-                'nomart_ramedicas': candidate_row['nomart'],  # Nombre del producto (nomart)
-                'score': score  # Puntaje de la coincidencia
+                'codart_ramedicas': candidate_row['codart'],  # Código del producto
+                'nomart_ramedicas': candidate_row['nomart'],  # Nombre del producto
+                'score': score
             }
+
+    # Si no hay coincidencias completas, se devuelve la mejor aproximación
+    if not best_match and matches:
+        best_match = {
+            'cum_cliente': client_cum,
+            'cum_ramedicas': ramedicas_df.iloc[matches[0][2]]['cum'],  # CUM de Ramedicas
+            'codart_ramedicas': ramedicas_df.iloc[matches[0][2]]['codart'],  # Código del producto
+            'nomart_ramedicas': ramedicas_df.iloc[matches[0][2]]['nomart'],  # Nombre del producto
+            'score': matches[0][1]  # Puntuación de la mejor coincidencia
+        }
 
     return best_match
 
 # Interfaz de Streamlit
-st.title("Homologador de Productos - CUM a Ramedicas")  # El título de la aplicación
+st.title("Homologador de Productos - Ramedicas")  # El título de la aplicación
 
 # Opción para actualizar la base de datos y limpiar el caché
 if st.button("Actualizar base de datos"):
     st.cache_data.clear()  # Limpiar el caché para cargar los datos de nuevo
 
-# Espacio de entrada para subir archivo con los CUMs de los clientes
-uploaded_file = st.file_uploader("Sube tu archivo con los CUMs de los clientes", type="xlsx")
+# Espacio de entrada para subir archivo con los CUM de los clientes
+uploaded_file = st.file_uploader("Sube tu archivo con los CUM de los clientes", type="xlsx")
 
 if uploaded_file:
-    # Leer el archivo subido con los CUMs de los clientes
+    # Leer el archivo subido con los CUM de los clientes
     client_cums_df = pd.read_excel(uploaded_file)
-
+    
     # Verificar si la columna 'cum' está presente en el archivo subido
     if 'cum' not in client_cums_df.columns:
         st.error("El archivo debe contener una columna llamada 'cum'.")
     else:
         # Cargar los datos de productos de Ramedicas
         ramedicas_df = load_ramedicas_data()
-
+        
         # Lista para almacenar los resultados de la homologación
         results = []
-
-        # Se crea la iteración sobre cada CUM para encontrar la mejor coincidencia
+        
+        # Se crea la iteración sobre cada CUM de cliente para encontrar la mejor coincidencia
         for client_cum in client_cums_df['cum']:
             match = find_best_match(client_cum, ramedicas_df)
             if match:
