@@ -16,6 +16,9 @@ def load_ramedicas_data():
 
 # Preprocesar CUM para una mejor comparación
 def preprocess_cum(cum):
+    if not isinstance(cum, str):  # Verificar que el CUM sea una cadena
+        return ""
+    
     replacements = {
         "(": "", ")": "", "+": " ", "/": " ", "-": " ", ",": "", ";": "",
         ".": "", "mg": " mg", "ml": " ml", "capsula": " capsulas",
@@ -23,6 +26,7 @@ def preprocess_cum(cum):
     }
     for old, new in replacements.items():
         cum = cum.lower().replace(old, new)
+    
     stopwords = {"de", "el", "la", "los", "las", "un", "una", "y", "en", "por"}
     words = [word for word in cum.split() if word not in stopwords]
     return " ".join(sorted(words))
@@ -145,6 +149,3 @@ if client_cums_manual:
         file_name="homologacion_resultados.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
-
-else:
-    st.info("Por favor, sube un archivo con los CUM de los clientes para iniciar la homologación.")
