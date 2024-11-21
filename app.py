@@ -1,144 +1,135 @@
 import streamlit as st
 import pandas as pd
 from io import BytesIO
+from googleapiclient.discovery import build
+from google.oauth2 import service_account
 from rapidfuzz import fuzz, process
 
-# Cargar datos de Ramedicas desde Google Drive
-@st.cache_data
-def load_ramedicas_data():
-    # URL del archivo Excel en Google Drive
-    ramedicas_url = (
-        "https://docs.google.com/spreadsheets/d/1Y9SgliayP_J5Vi2SdtZmGxKWwf1iY7ma/export?format=xlsx&sheet=Hoja1"
-    )
-    # Leer el archivo Excel desde la URL
-    ramedicas_df = pd.read_excel(ramedicas_url, sheet_name="Hoja1")
-    return ramedicas_df[['codart', 'nomart']]
+# Función para cargar datos desde Google Sheets usando la API de Google Sheets
+def load_google_sheet_data(sheet_url):
+    # Cargar las credenciales y la API de Google Sheets
+    creds = service_account.Credentials.from_service_account_file('credentials.json', scopes=['https://www.googleapis.com/auth/spreadsheets.readonly'])
+    service = build('sheets', 'v4', credentials=creds)
 
-# Preprocesar nombres para una mejor comparación
-def preprocess_name(name):
-    replacements = {
-        "(": "", ")": "", "+": " ", "/": " ", "-": " ", ",": "", ";": "",
-        ".": "", "mg": " mg", "ml": " ml", "capsula": " capsulas",
-        "tablet": " tableta", "tableta": " tableta", "parches": " parche", "parche": " parche"
-    }
-    for old, new in replacements.items():
-        name = name.lower().replace(old, new)
-    stopwords = {"de", "el", "la", "los", "las", "un", "una", "y", "en", "por"}
-    words = [word for word in name.split() if word not in stopwords]
-    return " ".join(sorted(words))
+    # Obtener el ID de la hoja de cálculo desde la URL
+    spreadsheet_id = sheet_url.split('/d/')[1].split('/')[0]
+    
+    # Leer los datos de la hoja de cálculo
+    result = service.spreadsheets().values().get(spreadsheetId=spreadsheet_id, range="Hoja1").execute()
+    values = result.get('values', [])
 
-# Buscar la mejor coincidencia entre el nombre del cliente y los productos de Ramedicas
-def find_best_match(client_name, ramedicas_df):
-    client_name_processed = preprocess_name(client_name)
-    ramedicas_df['processed_nomart'] = ramedicas_df['nomart'].apply(preprocess_name)
+    # Crear un DataFrame con los datos obtenidos
+    if not values:
+        st.error('No data found in the sheet.')
+        return pd.DataFrame()
+    
+    # Convertir a DataFrame, asumiendo que las primeras filas contienen los encabezados
+    df = pd.DataFrame(values[1:], columns=values[0])
+    return df
 
-    if client_name_processed in ramedicas_df['processed_nomart'].values:
-        exact_match = ramedicas_df[ramedicas_df['processed_nomart'] == client_name_processed].iloc[0]
+# Función de preprocesamiento para CUM (convertir a minúsculas)
+def preprocess_cum(cum):
+    return cum.strip().lower()  # Limpiar y poner el CUM en minúsculas
+
+# Buscar la mejor coincidencia entre el CUM y los productos de Ramedicas
+def find_best_match(cum, ramedicas_df):
+    # Preprocesar el CUM
+    cum_processed = preprocess_cum(cum)
+    
+    # Verificar si el CUM está en los datos de Ramedicas
+    if cum_processed in ramedicas_df['cum'].apply(preprocess_cum).values:
+        exact_match = ramedicas_df[ramedicas_df['cum'].apply(preprocess_cum) == cum_processed].iloc[0]
         return {
-            'nombre_cliente': client_name,
-            'nombre_ramedicas': exact_match['nomart'],
+            'cum_cliente': cum,
             'codart': exact_match['codart'],
-            'score': 100
+            'nomart': exact_match['nomart'],
+            'score': 100  # Puntaje 100 para coincidencia exacta
         }
 
-    client_terms = set(client_name_processed.split())
-    matches = process.extract(client_name_processed, ramedicas_df['processed_nomart'], scorer=fuzz.token_set_ratio, limit=10)
-
-    best_match = None
-    highest_score = 0
-
-    for match, score, idx in matches:
-        candidate_row = ramedicas_df.iloc[idx]
-        candidate_terms = set(match.split())
-        if client_terms.issubset(candidate_terms) and score > highest_score:
-            highest_score = score
-            best_match = {
-                'nombre_cliente': client_name,
-                'nombre_ramedicas': candidate_row['nomart'],
-                'codart': candidate_row['codart'],
-                'score': score
-            }
-
-    if not best_match and matches:
-        best_match = {
-            'nombre_cliente': client_name,
-            'nombre_ramedicas': matches[0][0],
-            'codart': ramedicas_df.iloc[matches[0][2]]['codart'],
-            'score': matches[0][1]
+    # Si no se encuentra coincidencia exacta, realizar búsqueda difusa con RapidFuzz
+    matches = process.extractOne(cum_processed, ramedicas_df['cum'].apply(preprocess_cum))
+    
+    if matches:
+        best_match = ramedicas_df.iloc[matches[2]]
+        return {
+            'cum_cliente': cum,
+            'codart': best_match['codart'],
+            'nomart': best_match['nomart'],
+            'score': matches[1]  # Puntaje de la mejor coincidencia
         }
 
-    return best_match
+    return None  # Si no hay coincidencias
 
-# Convertir DataFrame a archivo Excel
+# Función para convertir el DataFrame a un archivo Excel
 def to_excel(df):
-    output = BytesIO()
+    output = BytesIO()  # Usamos BytesIO para manejar el archivo en memoria
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
-        df.to_excel(writer, index=False, sheet_name="Homologación")
+        df.to_excel(writer, index=False, sheet_name="Homologación")  # Escribir el DataFrame al archivo
     return output.getvalue()
 
 # Interfaz de Streamlit
-st.title("**RAMEDICAS S.A.S.** - Homologador de Productos")
-st.markdown(
-    """
-    # **RAMEDICAS S.A.S.**
-    ### Homologador de Productos de Ramedicas  
-    Esta herramienta te permite buscar y consultar los códigos de productos de manera eficiente y rápida.
-    """
-)
+st.title("Homologador de Productos - CUM a Ramedicas")
 
-if st.button("Actualizar base de datos"):
-    st.cache_data.clear()
+# Cargar los datos de productos de Ramedicas
+ramedicas_df = load_google_sheet_data("https://docs.google.com/spreadsheets/d/1Y9SgliayP_J5Vi2SdtZmGxKWwf1iY7ma/export?format=xlsx&sheet=Hoja1")
 
-# Subir archivo
-uploaded_file = st.file_uploader("O sube tu archivo de excel con la columna nombres que contenga productos aquí:", type="xlsx")
+# Opción para ingresar el CUM manualmente
+cum_input = st.text_input("Ingresa el CUM del cliente", "")
 
-# Procesar manualmente
-client_names_manual = st.text_area("Ingresa los nombres de los productos que envió el cliente, separados por saltos de línea:")
+# Opción para subir un archivo con CUMs
+uploaded_file = st.file_uploader("Sube tu archivo con los CUMs de los clientes", type="xlsx")
 
-ramedicas_df = load_ramedicas_data()
-
-if uploaded_file:
-    client_names_df = pd.read_excel(uploaded_file)
-    if 'nombre' not in client_names_df.columns:
-        st.error("El archivo debe tener una columna llamada 'nombre'.")
-    else:
-        client_names = client_names_df['nombre'].tolist()
-        matches = []
-
-        for client_name in client_names:
-            if client_name.strip():
-                match = find_best_match(client_name, ramedicas_df)
-                matches.append(match)
-
-        results_df = pd.DataFrame(matches)
-        st.dataframe(results_df)
-
-        excel_data = to_excel(results_df)
+if cum_input:
+    # Si se ingresa un CUM manualmente
+    match = find_best_match(cum_input, ramedicas_df)
+    if match:
+        result_df = pd.DataFrame([match])
+        st.write("Resultado de homologación:")
+        st.dataframe(result_df)  # Mostrar el resultado en una tabla
         st.download_button(
-            label="📥 Descargar resultados en Excel",
-            data=excel_data,
-            file_name="homologacion_resultados.xlsx",
+            label="Descargar resultado como archivo Excel",
+            data=to_excel(result_df),
+            file_name="resultado_homologacion.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+    else:
+        st.error("No se encontró un producto que coincida con el CUM ingresado.")
 
-# Procesar texto manual
-if client_names_manual:
-    client_names = client_names_manual.split("\n")
-    matches = []
+elif uploaded_file:
+    # Si se sube un archivo con CUMs
+    client_cums_df = pd.read_excel(uploaded_file)
+    
+    # Verificar si la columna 'cum' está presente en el archivo subido
+    if 'cum' not in client_cums_df.columns:
+        st.error("El archivo debe contener una columna llamada 'cum'.")
+    else:
+        # Lista para almacenar los resultados de la homologación
+        results = []
+        
+        # Buscar la mejor coincidencia para cada CUM
+        for cum in client_cums_df['cum']:
+            match = find_best_match(cum, ramedicas_df)
+            if match:
+                results.append(match)
+            else:
+                results.append({
+                    'cum_cliente': cum,
+                    'codart': None,
+                    'nomart': None,
+                    'score': 0
+                })
 
-    for client_name in client_names:
-        if client_name.strip():
-            match = find_best_match(client_name, ramedicas_df)
-            matches.append(match)
+        # Crear un DataFrame con los resultados
+        results_df = pd.DataFrame(results)
+        st.write("Resultados de homologación:")
+        st.dataframe(results_df)  # Mostrar los resultados en una tabla
 
-    results_df = pd.DataFrame(matches)
-    st.dataframe(results_df)
-
-    excel_data = to_excel(results_df)
-    st.download_button(
-        label="📥 Descargar resultados en Excel",
-        data=excel_data,
-        file_name="homologacion_resultados.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
-
+        # Botón para descargar los resultados como un archivo Excel
+        st.download_button(
+            label="Descargar archivo con resultados",
+            data=to_excel(results_df),
+            file_name="homologacion_productos.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+else:
+    st.info("Por favor, ingresa un CUM o sube un archivo para obtener los resultados.")
