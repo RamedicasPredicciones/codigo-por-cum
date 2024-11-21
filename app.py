@@ -12,42 +12,40 @@ def load_ramedicas_data():
     )
     # Leer el archivo Excel desde la URL
     ramedicas_df = pd.read_excel(ramedicas_url, sheet_name="Hoja1")
-    return ramedicas_df[['cum', 'codart', 'nomart']]
+    return ramedicas_df[['codart', 'nomart']]
 
-# Preprocesar CUM para una mejor comparación
+# Preprocesar nombres para una mejor comparación
 def preprocess_cum(cum):
-    if not isinstance(cum, str):  # Verificar que el CUM sea una cadena
-        return ""
-    
-    replacements = {
-        "(": "", ")": "", "+": " ", "/": " ", "-": " ", ",": "", ";": "",
-        ".": "", "mg": " mg", "ml": " ml", "capsula": " capsulas",
-        "tablet": " tableta", "tableta": " tableta", "parches": " parche", "parche": " parche"
-    }
-    for old, new in replacements.items():
-        cum = cum.lower().replace(old, new)
-    
-    stopwords = {"de", "el", "la", "los", "las", "un", "una", "y", "en", "por"}
-    words = [word for word in cum.split() if word not in stopwords]
-    return " ".join(sorted(words))
+    # Verificar si el valor no es vacío o None
+    if isinstance(cum, str):
+        replacements = {
+            "(": "", ")": "", "+": " ", "/": " ", "-": " ", ",": "", ";": "",
+            ".": "", "mg": " mg", "ml": " ml", "capsula": " capsulas",
+            "tablet": " tableta", "tableta": " tableta", "parches": " parche", "parche": " parche"
+        }
+        for old, new in replacements.items():
+            cum = cum.lower().replace(old, new)
+        stopwords = {"de", "el", "la", "los", "las", "un", "una", "y", "en", "por"}
+        words = [word for word in cum.split() if word not in stopwords]
+        return " ".join(sorted(words))
+    return ""  # Si es None o vacío, retornamos una cadena vacía
 
-# Buscar la mejor coincidencia entre el CUM del cliente y los productos de Ramedicas
+# Buscar la mejor coincidencia entre el nombre del cliente y los productos de Ramedicas
 def find_best_match(client_cum, ramedicas_df):
     client_cum_processed = preprocess_cum(client_cum)
-    ramedicas_df['processed_cum'] = ramedicas_df['cum'].apply(preprocess_cum)
+    ramedicas_df['processed_nomart'] = ramedicas_df['nomart'].apply(preprocess_cum)
 
-    if client_cum_processed in ramedicas_df['processed_cum'].values:
-        exact_match = ramedicas_df[ramedicas_df['processed_cum'] == client_cum_processed].iloc[0]
+    if client_cum_processed in ramedicas_df['processed_nomart'].values:
+        exact_match = ramedicas_df[ramedicas_df['processed_nomart'] == client_cum_processed].iloc[0]
         return {
-            'cum_cliente': client_cum,
-            'cum_ramedicas': exact_match['cum'],
+            'nombre_cliente': client_cum,
+            'nombre_ramedicas': exact_match['nomart'],
             'codart': exact_match['codart'],
-            'nomart': exact_match['nomart'],
             'score': 100
         }
 
     client_terms = set(client_cum_processed.split())
-    matches = process.extract(client_cum_processed, ramedicas_df['processed_cum'], scorer=fuzz.token_set_ratio, limit=10)
+    matches = process.extract(client_cum_processed, ramedicas_df['processed_nomart'], scorer=fuzz.token_set_ratio, limit=10)
 
     best_match = None
     highest_score = 0
@@ -58,17 +56,16 @@ def find_best_match(client_cum, ramedicas_df):
         if client_terms.issubset(candidate_terms) and score > highest_score:
             highest_score = score
             best_match = {
-                'cum_cliente': client_cum,
-                'cum_ramedicas': candidate_row['cum'],
+                'nombre_cliente': client_cum,
+                'nombre_ramedicas': candidate_row['nomart'],
                 'codart': candidate_row['codart'],
-                'nomart': candidate_row['nomart'],
                 'score': score
             }
 
     if not best_match and matches:
         best_match = {
-            'cum_cliente': client_cum,
-            'cum_ramedicas': matches[0][0],
+            'nombre_cliente': client_cum,
+            'nombre_ramedicas': matches[0][0],
             'codart': ramedicas_df.iloc[matches[0][2]]['codart'],
             'score': matches[0][1]
         }
@@ -86,10 +83,9 @@ def to_excel(df):
 st.markdown(
     """
     <h1 style="text-align: center; color: orange;">RAMEDICAS S.A.S.</h1>
-    <h3 style="text-align: center;">Homologador de CUMs</h3>
+    <h3 style="text-align: center;">Homologador de Productos</h3>
     <p style="text-align: center;">
-    Esta herramienta permite realizar la homologación eficiente de los CUMs de productos que nos envíen los clientes, 
-    con los productos registrados en la base de datos de Ramedicas S.A.S.
+    Esta herramienta te permite buscar y consultar algunos códigos de productos de manera eficiente y rápida.
     </p>
     """, unsafe_allow_html=True
 )
@@ -98,19 +94,19 @@ if st.button("Actualizar base de datos"):
     st.cache_data.clear()
 
 # Subir archivo
-uploaded_file = st.file_uploader("O sube tu archivo de excel con la columna CUM que contiene los productos:", type="xlsx")
+uploaded_file = st.file_uploader("O sube tu archivo de excel con la columna nombres que contenga productos aquí:", type="xlsx")
 
 # Procesar manualmente
-client_cums_manual = st.text_area("Ingresa los CUMs de los productos que envió el cliente, separados por saltos de línea:")
+client_cums_manual = st.text_area("Ingresa los nombres de los productos que envió el cliente, separados por saltos de línea:")
 
 ramedicas_df = load_ramedicas_data()
 
 if uploaded_file:
     client_cums_df = pd.read_excel(uploaded_file)
-    if 'cum' not in client_cums_df.columns:
-        st.error("El archivo debe tener una columna llamada 'cum'.")
+    if 'nombre' not in client_cums_df.columns:
+        st.error("El archivo debe tener una columna llamada 'nombre'.")
     else:
-        client_cums = client_cums_df['cum'].tolist()
+        client_cums = client_cums_df['nombre'].tolist()
         matches = []
 
         for client_cum in client_cums:
