@@ -96,7 +96,7 @@ if st.button("Actualizar base de datos"):
     st.cache_data.clear()  # Limpiar el caché para cargar los datos de nuevo
 
 # Espacio de entrada para subir archivo con los CUM de los clientes
-uploaded_file = st.file_uploader("Sube tu archivo con los cum a buscar (El nombre de la columna debe ser "cum"), type="xlsx")
+uploaded_file = st.file_uploader("Sube tu archivo con los cum a buscar (El nombre de la columna debe ser \"cum\")", type="xlsx")
 
 if uploaded_file:
     # Leer el archivo subido con los CUM de los clientes
