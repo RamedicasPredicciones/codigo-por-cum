@@ -86,30 +86,9 @@ st.markdown(
         Homologador de Productos por CUM
     </h3>
     <p style="text-align: center; font-family: Arial, sans-serif; color: #6B6B6B;">
-         Esta herramienta te permite buscar y consultar los códigos de productos por medio de su CUM.
+         Esta herramienta te permite buscar y consultar los códigos de productos de por medio de su cum.
     </p>
     """, unsafe_allow_html=True
-)
-
-# URL de la imagen
-image_url = "https://drive.google.com/uc?export=view&id=1CnszOM0U5iq-tmP_b_OoeGhMvZChyOLt"
-
-# CSS para posicionar la imagen
-st.markdown(
-    f"""
-    <style>
-        .custom-image {{
-            position: fixed;
-            bottom: 10px;
-            left: 10px;
-            width: 150px; /* Ajusta el tamaño de la imagen */
-            border-radius: 10px; /* Esquinas redondeadas opcionales */
-            z-index: 100;
-        }}
-    </style>
-    <img src="{image_url}" class="custom-image">
-    """,
-    unsafe_allow_html=True
 )
 
 # Opción para actualizar la base de datos y limpiar el caché
@@ -166,3 +145,24 @@ if uploaded_file:
             file_name="homologacion_productos.xlsx",  # Nombre del archivo de descarga
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",  # Tipo de archivo excel 
         )
+
+# URL de la imagen
+image_url = "https://drive.google.com/uc?id=1CnszOM0U5iq-tmP_b_OoeGhMvZChyOLt"
+
+# CSS para posicionar la imagen
+st.markdown(
+    f"""
+    <style>
+        .custom-image {{
+            position: fixed;
+            bottom: 10px;
+            left: 10px;
+            width: 150px; /* Ajusta el tamaño de la imagen */
+            border-radius: 10px; /* Esquinas redondeadas opcionales */
+            z-index: 100;
+        }}
+    </style>
+    <img src="{image_url}" class="custom-image">
+    """,
+    unsafe_allow_html=True
+)
