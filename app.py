@@ -77,7 +77,14 @@ def find_best_match(client_cum, ramedicas_df):
     return best_match
 
 # Interfaz de Streamlit
-st.title("Homologador de Productos - Ramedicas")  # El título de la aplicación
+st.title("**RAMEDICAS S.A.S.**")  # El título en grande y centrado
+
+# Descripción de la empresa
+st.markdown("""
+    **Ramedicas S.A.S.** es una empresa especializada en la comercialización y distribución de productos farmacéuticos y médicos. 
+    Con un enfoque en la salud y el bienestar de los pacientes, ofrecemos una gama amplia de productos de calidad, garantizando el cumplimiento de los estándares más exigentes en la industria farmacéutica. 
+    Nuestra misión es brindar soluciones eficaces y accesibles en el ámbito de la salud, apoyando tanto a profesionales de la salud como a pacientes en todo el proceso de atención médica.
+""")
 
 # Opción para actualizar la base de datos y limpiar el caché
 if st.button("Actualizar base de datos"):
@@ -130,6 +137,9 @@ if uploaded_file:
         st.download_button(
             label="Descargar archivo con resultados",
             data=to_excel(results_df),
-            file_name="homologacion_productos.xlsx",  # Nombre del archivo de descarga
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",  # Tipo de archivo excel 
+            file_name="homologacion_productos.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
+else:
+    st.info("Por favor, sube un archivo con los CUM de los clientes para iniciar la homologación.")
