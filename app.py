@@ -77,7 +77,16 @@ def find_best_match(client_cum, ramedicas_df):
     return best_match
 
 # Interfaz de Streamlit
-st.title("Homologador de Productos - Ramedicas")  # El título de la aplicación
+st.markdown(
+    """
+    <h1 style="text-align: center; color: orange;">RAMEDICAS S.A.S.</h1>
+    <h3 style="text-align: center;">Homologador de Productos por cCUM</h3>
+    <p style="text-align: center;">
+    Esta herramienta te permite buscar y consultar los códigos de productos de por medio de su cum.
+    </p>
+    """, unsafe_allow_html=True
+)
+
 
 # Opción para actualizar la base de datos y limpiar el caché
 if st.button("Actualizar base de datos"):
