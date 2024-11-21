@@ -80,7 +80,7 @@ def find_best_match(client_cum, ramedicas_df):
 st.markdown(
     """
     <h1 style="text-align: center; color: orange;">RAMEDICAS S.A.S.</h1>
-    <h3 style="text-align: center;">Homologador de Productos por cCUM</h3>
+    <h3 style="text-align: center;">Homologador de Productos por CUM</h3>
     <p style="text-align: center;">
     Esta herramienta te permite buscar y consultar los códigos de productos de por medio de su cum.
     </p>
