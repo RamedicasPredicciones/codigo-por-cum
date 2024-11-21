@@ -141,3 +141,4 @@ if client_names_manual:
         file_name="homologacion_resultados.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
